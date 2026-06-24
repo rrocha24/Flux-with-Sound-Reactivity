@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FLUX — Generative Particle Engine</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: #03040a; color: #e5e7eb; user-select: none;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  #flux { position: fixed; inset: 0; display: block; cursor: none; }
+  body.cursor-off #flux { cursor: crosshair; }
+
+  #cursor {
+    position: fixed; top: 0; left: 0; width: 36px; height: 36px;
+    margin: -18px 0 0 -18px; border-radius: 50%;
+    border: 1px solid rgba(34,211,238,0.9);
+    box-shadow: 0 0 18px rgba(34,211,238,0.6), inset 0 0 12px rgba(167,139,250,0.5);
+    pointer-events: none; mix-blend-mode: screen; z-index: 5;
+  }
+  body.cursor-off #cursor { display: none; }
+
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .glass {
+    background: rgba(9,11,20,0.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.09); box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+  }
+
+  .hud { position: fixed; top: 16px; left: 18px; display: flex; align-items: center; gap: 12px; z-index: 6; }
+  .brand b {
+    font-size: 26px; font-weight: 800; letter-spacing: 6px; line-height: 1; display: block;
+    background: linear-gradient(135deg,#22d3ee,#a78bfa); -webkit-background-clip: text;
+    background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .brand span {
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; letter-spacing: 2.5px;
+    color: #64748b; text-transform: uppercase; margin-top: 3px; display: block;
+  }
+  .tele { border-radius: 10px; padding: 6px 10px; font-size: 10.5px; color: #94a3b8; display: flex; gap: 12px; }
+
+  .hint { position: fixed; top: 18px; right: 18px; font-size: 10px; color: #475569;
+    text-align: right; line-height: 1.7; z-index: 6; }
+  .hint i { color: #64748b; font-style: normal; }
+
+  .deck { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    width: min(940px, calc(100% - 32px)); border-radius: 18px; padding: 14px; z-index: 6; }
+  .modes { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .mode {
+    display: flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 11px; cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: #cbd5e1; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09); transition: transform .14s ease, background .14s ease;
+  }
+  .mode:hover { transform: translateY(-1px); }
+  .mode.active {
+    color: #03040a; background: linear-gradient(135deg,#22d3ee,#a78bfa);
+    box-shadow: 0 6px 22px rgba(34,211,238,0.35);
+  }
+
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  .sliders { display: flex; gap: 16px; flex: 1; min-width: 260px; flex-wrap: wrap; }
+  .slider { display: flex; flex-direction: column; gap: 6px; min-width: 120px; flex: 1; }
+  .slider .lab { display: flex; justify-content: space-between; font-size: 10.5px; letter-spacing: 1px;
+    color: #94a3b8; text-transform: uppercase; }
+  .slider .lab b { color: #e2e8f0; font-weight: 600; }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 999px; background: rgba(255,255,255,0.16); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 15px; height: 15px;
+    border-radius: 50%; background: linear-gradient(135deg,#22d3ee,#a78bfa); cursor: pointer;
+    box-shadow: 0 0 10px rgba(34,211,238,0.8); border: none; }
+  input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: none; border-radius: 50%;
+    background: linear-gradient(135deg,#22d3ee,#a78bfa); cursor: pointer; box-shadow: 0 0 10px rgba(34,211,238,0.8); }
+
+  .seg { display: flex; gap: 4px; }
+  .seg button { flex: 1; padding: 7px 0; border-radius: 8px; cursor: pointer; font-size: 11.5px; font-weight: 600;
+    color: #cbd5e1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); }
+  .seg button.active { color: #03040a; background: linear-gradient(135deg,#22d3ee,#a78bfa); }
+
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    height: 40px; min-width: 40px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center;
+    gap: 7px; border-radius: 12px; cursor: pointer; color: #cbd5e1; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09); font-size: 12.5px; font-weight: 600;
+    transition: transform .14s ease, background .14s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
+  .btn.active { color: #03040a; background: linear-gradient(135deg,#22d3ee,#a78bfa); }
+  .btn svg { width: 17px; height: 17px; display: block; }
+
+  .colorpop { position: absolute; right: 14px; bottom: 70px; border-radius: 14px; padding: 14px; width: 270px; }
+  .colorpop .cp-title { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #94a3b8; margin-bottom: 12px; }
+  .cp-row { display: flex; gap: 10px; }
+  .cp-row label { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: .5px; color: #94a3b8; font-family: ui-monospace, Menlo, monospace; }
+  .cp-row input[type=color] { -webkit-appearance: none; appearance: none; width: 100%; height: 34px;
+    border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; background: none; cursor: pointer; padding: 0; }
+  .cp-row input[type=color]::-webkit-color-swatch-wrapper { padding: 3px; }
+  .cp-row input[type=color]::-webkit-color-swatch { border: none; border-radius: 5px; }
+  .cp-reset { margin-top: 12px; width: 100%; height: 34px; border-radius: 9px; cursor: pointer; font-size: 12px;
+    font-weight: 600; color: #cbd5e1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); }
+
+  .soundpop { position: absolute; right: 14px; bottom: 70px; border-radius: 14px; padding: 14px; width: 270px; }
+  .soundpop .cp-title { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px; }
+  .sp-status { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
+  .sp-status.on { color: #22d3ee; }
+  .sp-row { display: flex; gap: 8px; }
+  .sp-row button { flex: 1; height: 38px; border-radius: 9px; cursor: pointer; font-size: 12px; font-weight: 600;
+    color: #cbd5e1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); }
+  .sp-row button.active { color: #03040a; background: linear-gradient(135deg,#22d3ee,#a78bfa); }
+  .soundpop .slider { margin-top: 12px; }
+
+  .reopen { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: none;
+    border-radius: 999px; padding: 10px 18px; cursor: pointer; color: #e2e8f0; gap: 8px;
+    align-items: center; font-size: 13px; font-weight: 600; z-index: 6; border: 1px solid rgba(255,255,255,0.09); }
+  body.panel-hidden .deck { display: none; }
+  body.panel-hidden .hint { display: none; }
+  body.panel-hidden .reopen { display: inline-flex; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <canvas id="flux"></canvas>
+  <div id="cursor"></div>
+
+  <div class="hud">
+    <div class="brand"><b>FLUX</b><span>generative particle engine</span></div>
+    <div class="tele glass mono">
+      <span><b id="fps" style="color:#22d3ee">0</b> fps</span>
+      <span><b id="pts" style="color:#a78bfa">0</b> pts</span>
+      <span id="modeLabel" style="text-transform:capitalize">nebula</span>
+    </div>
+  </div>
+
+  <div class="hint mono">
+    move cursor to disturb · <i>click</i> to burst<br>
+    <i>space</i> pause · <i>R</i> randomize · <i>S</i> save · <i>C</i> colors
+  </div>
+
+  <div class="deck glass" id="deck">
+    <div class="modes" id="modes"></div>
+    <div class="row">
+      <div class="sliders">
+        <div class="slider">
+          <div class="lab mono"><span>Density</span><b id="densityV">55</b></div>
+          <input type="range" id="density" min="0" max="100" value="55">
+        </div>
+        <div class="slider">
+          <div class="lab mono"><span>Speed</span><b id="speedV">50</b></div>
+          <input type="range" id="speed" min="0" max="100" value="50">
+        </div>
+        <div class="slider">
+          <div class="lab mono"><span>Trails</span><b id="trailsV">78</b></div>
+          <input type="range" id="trails" min="0" max="100" value="78">
+        </div>
+        <div class="slider" style="max-width:190px">
+          <div class="lab mono"><span>Mirror</span><b id="mirrorV">Off</b></div>
+          <div class="seg" id="mirror">
+            <button data-k="1" class="active">Off</button>
+            <button data-k="2">x2</button>
+            <button data-k="4">x4</button>
+            <button data-k="6">x6</button>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="playPause" title="Play / Pause (space)"></button>
+        <button class="btn" id="random" title="Randomize (R)">Random</button>
+        <button class="btn" id="reset" title="Reset">Reset</button>
+        <button class="btn active" id="cursorBtn" title="Cursor force (M)">Cursor: Attract</button>
+        <button class="btn mono" id="palette" title="Cycle palette">Palette: Plasma</button>
+        <button class="btn" id="colorsBtn" title="Custom colors (C)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.7 1.7-1.6 0-.4-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.8-1.6 1.7-1.6H16c3.3 0 6-2.7 6-6 0-4.9-4.5-8-10-8z"/></svg>
+          Colors
+        </button>
+        <button class="btn" id="soundBtn" title="Sound reactivity">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v4h3l5 4V6L6 10H3z"/><path d="M16 8a5 5 0 0 1 0 8"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
+          Sound
+        </button>
+        <button class="btn" id="save" title="Save PNG (S)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M5 21h14"/></svg>
+        </button>
+        <button class="btn" id="hide" title="Hide panel (P)">Hide</button>
+      </div>
+    </div>
+
+    <div class="colorpop glass" id="colorPop" hidden>
+      <div class="cp-title mono">Custom palette</div>
+      <div class="cp-row">
+        <label>COLOR 1<input type="color" id="c1"></label>
+        <label>COLOR 2<input type="color" id="c2"></label>
+        <label>COLOR 3<input type="color" id="c3"></label>
+        <label>BG<input type="color" id="cbg"></label>
+      </div>
+      <button class="cp-reset" id="cpReset">Reset to Plasma</button>
+    </div>
+
+    <div class="soundpop glass" id="soundPop" hidden>
+      <div class="cp-title mono">Sound reactivity</div>
+      <div class="sp-status" id="soundStatus">Off</div>
+      <div class="sp-row">
+        <button id="micBtn">&#127908; Microphone</button>
+        <button id="fileBtn">&#127925; Music file</button>
+      </div>
+      <input type="file" id="audioFile" accept="audio/*" hidden>
+      <div class="slider">
+        <div class="lab mono"><span>Reactivity</span><b id="reactV">60</b></div>
+        <input type="range" id="react" min="0" max="100" value="60">
+      </div>
+      <button class="cp-reset" id="soundStop">Stop</button>
+    </div>
+  </div>
+
+  <button class="reopen glass" id="reopen">▲ Controls</button>
+
+<script>
+(function () {
+  "use strict";
+  var TAU = Math.PI * 2;
+  var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+  var lerp = function (a, b, u) { return a + (b - a) * u; };
+  var rand = function (a, b) { return a + Math.random() * (b - a); };
+
+  function hexToRgb(h) {
+    h = h.replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function rgbToHex(a) {
+    return "#" + a.map(function (v) { return ("0" + Math.round(v).toString(16)).slice(-2); }).join("");
+  }
+
+  var PALETTES = {
+    Plasma:  [[124,58,237],[217,70,239],[236,72,153],[34,211,238]],
+    Aurora:  [[16,185,129],[34,211,238],[59,130,246],[167,139,250]],
+    Inferno: [[244,63,94],[249,115,22],[250,204,21],[255,245,200]],
+    Ice:     [[37,99,235],[34,211,238],[186,230,253],[255,255,255]],
+    Solar:   [[250,204,21],[249,115,22],[239,68,68],[236,72,153]],
+    Custom:  [[124,58,237],[236,72,153],[34,211,238]]
+  };
+  var PALETTE_CYCLE = ["Plasma", "Aurora", "Inferno", "Ice", "Solar"];
+
+  function colorFor(t, stops, alpha) {
+    t = clamp(t, 0, 1);
+    var n = stops.length - 1, f = t * n, i = Math.floor(f), u = f - i;
+    var a = stops[i], b = stops[Math.min(i + 1, n)];
+    return "rgba(" + Math.round(lerp(a[0], b[0], u)) + "," + Math.round(lerp(a[1], b[1], u)) +
+           "," + Math.round(lerp(a[2], b[2], u)) + "," + alpha + ")";
+  }
+  function flowAngle(x, y, t, scale) {
+    return (Math.sin(x * scale + t * 0.6) + Math.sin(y * scale * 1.3 - t * 0.5) +
+            Math.sin((x + y) * scale * 0.7 + t * 0.3)) * Math.PI;
+  }
+
+  var MODES = [
+    { id: "nebula", label: "Nebula" }, { id: "flow", label: "Flow" },
+    { id: "galaxy", label: "Galaxy" }, { id: "waves", label: "Waves" },
+    { id: "vortex", label: "Vortex" }, { id: "constellation", label: "Constellation" },
+    { id: "starfield", label: "Starfield" }
+  ];
+  var COUNT_RANGE = {
+    nebula: [400, 4200], flow: [400, 4200], galaxy: [600, 5000], waves: [400, 4000],
+    vortex: [400, 3200], constellation: [40, 200], starfield: [250, 1800]
+  };
+  // modes that draw simple squares (mirror-capable)
+  var RECT_MODES = { nebula: 1, flow: 1, galaxy: 1, waves: 1, vortex: 1 };
+  var DEFAULTS = { mode: "nebula", density: 55, speed: 50, persistence: 78, paletteName: "Plasma", mouseMode: "attract", mirror: 1, bg: "3,4,10" };
+
+  var cfg = {
+    mode: DEFAULTS.mode, running: true, density: DEFAULTS.density, speed: DEFAULTS.speed,
+    persistence: DEFAULTS.persistence, paletteName: DEFAULTS.paletteName, mouseMode: DEFAULTS.mouseMode,
+    mirror: DEFAULTS.mirror, bg: DEFAULTS.bg
+  };
+  var particles = [], pointer = { x: -9999, y: -9999, active: false }, size = { w: 0, h: 0 }, time = 0;
+  var audio = { ctx: null, analyser: null, data: null, source: null, el: null, stream: null,
+    active: false, kind: null, level: 0, pulse: 0, bassAvg: 0, lastBeat: 0, reactivity: 0.6 };
+
+  var canvas = document.getElementById("flux");
+  var ctx = canvas.getContext("2d");
+  var cursorEl = document.getElementById("cursor");
+
+  function countFor(m, d) { var r = COUNT_RANGE[m]; return Math.round(lerp(r[0], r[1], d / 100)); }
+
+  function spawn(m, n, w, h) {
+    var arr = new Array(n);
+    var maxR = Math.min(w, h) * (m === "galaxy" ? 0.46 : 0.5);
+    var arms = 4;
+    for (var i = 0; i < n; i++) {
+      var p = {
+        x: Math.random() * w, y: Math.random() * h, vx: 0, vy: 0, hue: Math.random(),
+        x0: Math.random() * 2 - 1, y0: Math.random() * 2 - 1, z: Math.random(), psx: null, psy: null,
+        baseY: Math.random() * h, phase: rand(0, TAU)
+      };
+      if (m === "constellation") { p.vx = rand(-0.6, 0.6); p.vy = rand(-0.6, 0.6); }
+      if (m === "galaxy") {
+        var arm = Math.floor(Math.random() * arms);
+        var rr = Math.pow(Math.random(), 0.55) * maxR;
+        p.gr = rr; p.ga = arm * (TAU / arms) + rr * 0.011 + rand(-0.18, 0.18);
+        p.gspeed = 1 / Math.sqrt(rr + 40); p.hue = clamp(rr / maxR, 0, 1);
+      }
+      if (m === "waves") { p.hue = p.baseY / h; }
+      arr[i] = p;
+    }
+    return arr;
+  }
+  function respawn() { particles = spawn(cfg.mode, countFor(cfg.mode, cfg.density), size.w, size.h); }
+
+  function fit() {
+    var w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+    canvas.width = w; canvas.height = h; size.w = w; size.h = h;
+    if (!particles.length) respawn();
+    ctx.fillStyle = "rgb(" + cfg.bg + ")"; ctx.fillRect(0, 0, w, h);
+  }
+
+  // mirror-aware square plot
+  function plot(x, y, s, style) {
+    ctx.fillStyle = style;
+    var k = cfg.mirror;
+    if (k <= 1) { ctx.fillRect(x, y, s, s); return; }
+    var cx = size.w / 2, cy = size.h / 2, dx = x - cx, dy = y - cy;
+    for (var m = 0; m < k; m++) {
+      var ang = (TAU / k) * m, ca = Math.cos(ang), sa = Math.sin(ang);
+      ctx.fillRect(cx + dx * ca - dy * sa, cy + dx * sa + dy * ca, s, s);
+    }
+  }
+
+  function applyMouseVel(p, strength) {
+    if (!pointer.active || cfg.mouseMode === "off") return;
+    var dx = p.x - pointer.x, dy = p.y - pointer.y, d2 = dx * dx + dy * dy, R = 170;
+    if (d2 < R * R) {
+      var d = Math.sqrt(d2) + 0.001;
+      var f = (1 - d / R) * (cfg.mouseMode === "attract" ? -1 : 1) * strength;
+      p.vx += (dx / d) * f; p.vy += (dy / d) * f;
+    }
+  }
+
+  var frames = 0, fpsT = performance.now();
+  var fpsEl = document.getElementById("fps"), ptsEl = document.getElementById("pts"), modeLabelEl = document.getElementById("modeLabel");
+
+  function frame() {
+    requestAnimationFrame(frame);
+    var w = size.w, h = size.h, ps = particles;
+
+    frames++;
+    var now = performance.now();
+    if (now - fpsT >= 500) {
+      fpsEl.textContent = Math.round((frames * 1000) / (now - fpsT));
+      ptsEl.textContent = ps.length.toLocaleString();
+      modeLabelEl.textContent = cfg.mode;
+      frames = 0; fpsT = now;
+    }
+    if (!cfg.running || !ps.length) return;
+
+    if (audio.active) updateAudio(now);
+    var react = audio.reactivity, lvl = audio.active ? audio.level : 0, pulse = audio.active ? audio.pulse : 0;
+    var spd = lerp(0.25, 2.4, cfg.speed / 100) * (1 + (lvl * 1.2 + pulse * 0.8) * react);
+    var stops = PALETTES[cfg.paletteName] || PALETTES.Plasma;
+    time += 0.0016 * (0.4 + spd);
+    var t = time, i, p;
+
+    var fade = cfg.mode === "constellation" ? 1 : lerp(0.32, 0.025, cfg.persistence / 100);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(" + cfg.bg + "," + fade + ")";
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "lighter";
+
+    if (cfg.mode === "nebula" || cfg.mode === "flow") {
+      var scale = cfg.mode === "nebula" ? 0.0016 : 0.0042;
+      var force = cfg.mode === "nebula" ? 0.075 : 0.13;
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i];
+        var a = flowAngle(p.x, p.y, t, scale);
+        p.vx += Math.cos(a) * force * spd; p.vy += Math.sin(a) * force * spd;
+        applyMouseVel(p, 0.9);
+        p.vx *= 0.94; p.vy *= 0.94; p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x += w; else if (p.x >= w) p.x -= w;
+        if (p.y < 0) p.y += h; else if (p.y >= h) p.y -= h;
+        var sp = Math.min(1, Math.hypot(p.vx, p.vy) / 3);
+        var col = (Math.sin(p.x * 0.0016 + p.y * 0.0016 + t * 0.3) + 1) / 2;
+        plot(p.x, p.y, 1.3 + sp * 1.7, colorFor(col * 0.7 + p.hue * 0.3, stops, 0.5));
+      }
+    } else if (cfg.mode === "galaxy") {
+      var gcx = w / 2, gcy = h / 2;
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i];
+        p.ga += p.gspeed * 0.04 * spd;
+        var gx = gcx + Math.cos(p.ga) * p.gr, gy = gcy + Math.sin(p.ga) * p.gr;
+        var tw = 0.4 + 0.6 * ((Math.sin(p.phase + t * 3) + 1) / 2);
+        plot(gx, gy, 1.5, colorFor(p.hue, stops, 0.55 * tw));
+      }
+    } else if (cfg.mode === "waves") {
+      var amp = h * 0.06;
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i];
+        p.x += (0.6 + 1.8 * spd); if (p.x > w) p.x -= w;
+        var wy = p.baseY + Math.sin(p.x * 0.012 + t * 1.3 + p.phase) * amp + Math.sin(p.x * 0.03 - t * 0.7) * amp * 0.45;
+        if (pointer.active && cfg.mouseMode !== "off") {
+          var wd = Math.abs(p.x - pointer.x);
+          if (wd < 130) { var pull = (1 - wd / 130) * (pointer.y - wy) * 0.25 * (cfg.mouseMode === "repel" ? -1 : 1); wy += pull; }
+        }
+        plot(p.x, wy, 1.6, colorFor(p.hue, stops, 0.55));
+      }
+    } else if (cfg.mode === "vortex") {
+      var cx = w / 2, cy = h / 2, maxR = Math.min(w, h) * 0.52;
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i];
+        var dx = p.x - cx, dy = p.y - cy, r = Math.hypot(dx, dy) + 0.001, ang = Math.atan2(dy, dx);
+        ang += (0.5 + 2.4 * spd) / Math.max(r, 22); r -= 0.35 * spd;
+        p.x = cx + Math.cos(ang) * r; p.y = cy + Math.sin(ang) * r;
+        if (pointer.active && cfg.mouseMode !== "off") {
+          var mx = p.x - pointer.x, my = p.y - pointer.y, md = Math.hypot(mx, my) + 0.001;
+          if (md < 170) { var ff = (1 - md / 170) * (cfg.mouseMode === "attract" ? -8 : 8); p.x += (mx / md) * ff; p.y += (my / md) * ff; }
+        }
+        if (r < 14) { var na = rand(0, TAU), nr = rand(maxR * 0.55, maxR); p.x = cx + Math.cos(na) * nr; p.y = cy + Math.sin(na) * nr; }
+        plot(p.x, p.y, 1.7, colorFor(1 - clamp(r / maxR, 0, 1), stops, 0.5));
+      }
+    } else if (cfg.mode === "constellation") {
+      var thr = 132, thr2 = thr * thr;
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i];
+        var aa = flowAngle(p.x, p.y, t, 0.0009);
+        p.vx += Math.cos(aa) * 0.02 * spd; p.vy += Math.sin(aa) * 0.02 * spd;
+        applyMouseVel(p, 1.4);
+        p.vx = clamp(p.vx * 0.985, -1.6, 1.6); p.vy = clamp(p.vy * 0.985, -1.6, 1.6);
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > w) { p.vx *= -1; p.x = clamp(p.x, 0, w); }
+        if (p.y < 0 || p.y > h) { p.vy *= -1; p.y = clamp(p.y, 0, h); }
+      }
+      ctx.lineWidth = 1;
+      for (i = 0; i < ps.length; i++) {
+        var A = ps[i];
+        for (var j = i + 1; j < ps.length; j++) {
+          var B = ps[j], ddx = A.x - B.x, ddy = A.y - B.y, dd2 = ddx * ddx + ddy * ddy;
+          if (dd2 < thr2) {
+            var d3 = Math.sqrt(dd2);
+            ctx.strokeStyle = colorFor((A.hue + B.hue) / 2, stops, (1 - d3 / thr) * 0.45);
+            ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+          }
+        }
+      }
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i]; ctx.fillStyle = colorFor(p.hue, stops, 0.95);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.1, 0, TAU); ctx.fill();
+      }
+    } else if (cfg.mode === "starfield") {
+      var scx = w / 2, scy = h / 2, focal = 0.9;
+      for (i = 0; i < ps.length; i++) {
+        p = ps[i]; p.z -= 0.0065 * spd;
+        if (p.z <= 0.02) { p.x0 = Math.random() * 2 - 1; p.y0 = Math.random() * 2 - 1; p.z = 1; p.psx = null; p.hue = Math.random(); }
+        var k = focal / p.z, sx = scx + p.x0 * k * (w * 0.5), sy = scy + p.y0 * k * (h * 0.5), b = Math.min(1, (1 - p.z) * 1.3);
+        if (p.psx != null) {
+          ctx.strokeStyle = colorFor(p.hue, stops, 0.35 + 0.65 * b);
+          ctx.lineWidth = 0.5 + b * 2.2;
+          ctx.beginPath(); ctx.moveTo(p.psx, p.psy); ctx.lineTo(sx, sy); ctx.stroke();
+        }
+        p.psx = sx; p.psy = sy;
+      }
+    }
+
+    if (audio.active && audio.pulse > 0.02) {
+      var pr = audio.pulse * audio.reactivity;
+      var cc = stops[Math.min(1, stops.length - 1)];
+      ctx.globalCompositeOperation = "lighter";
+      var rg = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.7);
+      rg.addColorStop(0, "rgba(" + cc[0] + "," + cc[1] + "," + cc[2] + "," + (0.16 * pr) + ")");
+      rg.addColorStop(1, "rgba(" + cc[0] + "," + cc[1] + "," + cc[2] + ",0)");
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  /* ---------- sound reactivity ---------- */
+  function setupAnalyser(ctx) {
+    audio.analyser = ctx.createAnalyser();
+    audio.analyser.fftSize = 512;
+    audio.analyser.smoothingTimeConstant = 0.8;
+    audio.data = new Uint8Array(audio.analyser.frequencyBinCount);
+  }
+  function updateAudio(now) {
+    if (!audio.analyser) return;
+    audio.analyser.getByteFrequencyData(audio.data);
+    var d = audio.data, n = d.length, bassEnd = Math.floor(n * 0.08);
+    var bass = 0, all = 0;
+    for (var i = 0; i < n; i++) { var v = d[i] / 255; all += v; if (i < bassEnd) bass += v; }
+    bass /= Math.max(1, bassEnd); all /= n;
+    audio.level += (Math.min(1, all * 2.2) - audio.level) * 0.3;
+    audio.bassAvg += (bass - audio.bassAvg) * 0.05;
+    if (bass > audio.bassAvg * 1.35 + 0.06 && now - audio.lastBeat > 180) {
+      audio.pulse = 1; audio.lastBeat = now;
+      burst(size.w / 2, size.h / 2, 8 + bass * 16);
+    }
+    audio.pulse *= 0.9;
+  }
+  function stopAudio() {
+    if (audio.source) { try { audio.source.disconnect(); } catch (e) {} }
+    if (audio.analyser) { try { audio.analyser.disconnect(); } catch (e) {} }
+    if (audio.stream) { audio.stream.getTracks().forEach(function (t) { t.stop(); }); }
+    if (audio.el) { try { audio.el.pause(); } catch (e) {} }
+    audio.source = null; audio.stream = null; audio.el = null;
+    audio.active = false; audio.kind = null; audio.level = 0; audio.pulse = 0;
+    setSoundStatus("Off", false); setSoundActive(null);
+  }
+  function ensureCtx() {
+    if (!audio.ctx) { var AC = window.AudioContext || window.webkitAudioContext; audio.ctx = new AC(); }
+    if (audio.ctx.state === "suspended") audio.ctx.resume();
+    return audio.ctx;
+  }
+  function startMic() {
+    stopAudio();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setSoundStatus("Mic not supported here", false); return; }
+    var ctx = ensureCtx();
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      audio.stream = stream; audio.source = ctx.createMediaStreamSource(stream);
+      setupAnalyser(ctx); audio.source.connect(audio.analyser);
+      audio.active = true; audio.kind = "mic"; setSoundStatus("Listening to mic", true); setSoundActive("mic");
+    }).catch(function () { setSoundStatus("Mic blocked or unavailable", false); });
+  }
+  function startFile(file) {
+    stopAudio();
+    var ctx = ensureCtx();
+    var el = new Audio(); el.src = URL.createObjectURL(file); el.loop = true;
+    audio.el = el; audio.source = ctx.createMediaElementSource(el);
+    setupAnalyser(ctx);
+    audio.source.connect(audio.analyser); audio.analyser.connect(ctx.destination);
+    el.play().catch(function () {});
+    audio.active = true; audio.kind = "file";
+    var nm = file.name.length > 22 ? file.name.slice(0, 21) + "\u2026" : file.name;
+    setSoundStatus("Playing: " + nm, true); setSoundActive("file");
+  }
+
+  /* ---------- UI ---------- */
+  var ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+
+  var modesEl = document.getElementById("modes");
+  MODES.forEach(function (m) {
+    var btn = document.createElement("button");
+    btn.className = "mode" + (m.id === cfg.mode ? " active" : "");
+    btn.textContent = m.label; btn.dataset.id = m.id;
+    btn.addEventListener("click", function () {
+      cfg.mode = m.id; respawn();
+      document.querySelectorAll(".mode").forEach(function (e) { e.classList.toggle("active", e.dataset.id === m.id); });
+    });
+    modesEl.appendChild(btn);
+  });
+
+  function bindSlider(id, valId, onChange) {
+    var el = document.getElementById(id), v = document.getElementById(valId);
+    el.addEventListener("input", function () { v.textContent = el.value; onChange(Number(el.value)); });
+  }
+  bindSlider("density", "densityV", function (val) { cfg.density = val; respawn(); });
+  bindSlider("speed", "speedV", function (val) { cfg.speed = val; });
+  bindSlider("trails", "trailsV", function (val) { cfg.persistence = val; });
+
+  var mirrorEl = document.getElementById("mirror"), mirrorV = document.getElementById("mirrorV");
+  mirrorEl.querySelectorAll("button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      cfg.mirror = Number(b.dataset.k);
+      mirrorV.textContent = cfg.mirror <= 1 ? "Off" : "x" + cfg.mirror;
+      mirrorEl.querySelectorAll("button").forEach(function (e) { e.classList.toggle("active", e === b); });
+    });
+  });
+
+  var playPause = document.getElementById("playPause");
+  function renderPlay() { playPause.innerHTML = cfg.running ? ICON_PAUSE : ICON_PLAY; }
+  renderPlay();
+  playPause.addEventListener("click", function () { cfg.running = !cfg.running; renderPlay(); });
+
+  var cursorBtn = document.getElementById("cursorBtn");
+  function renderCursorBtn() {
+    var label = cfg.mouseMode === "attract" ? "Attract" : cfg.mouseMode === "repel" ? "Repel" : "Off";
+    cursorBtn.textContent = "Cursor: " + label;
+    cursorBtn.classList.toggle("active", cfg.mouseMode !== "off");
+    document.body.classList.toggle("cursor-off", cfg.mouseMode === "off");
+  }
+  cursorBtn.addEventListener("click", function () {
+    cfg.mouseMode = cfg.mouseMode === "attract" ? "repel" : cfg.mouseMode === "repel" ? "off" : "attract";
+    renderCursorBtn();
+  });
+
+  var paletteBtn = document.getElementById("palette");
+  paletteBtn.addEventListener("click", function () {
+    var idx = PALETTE_CYCLE.indexOf(cfg.paletteName);
+    cfg.paletteName = PALETTE_CYCLE[(idx + 1) % PALETTE_CYCLE.length];
+    paletteBtn.textContent = "Palette: " + cfg.paletteName;
+  });
+
+  /* custom colors */
+  var colorPop = document.getElementById("colorPop"), colorsBtn = document.getElementById("colorsBtn");
+  var c1 = document.getElementById("c1"), c2 = document.getElementById("c2"), c3 = document.getElementById("c3"), cbg = document.getElementById("cbg");
+  function seedColorInputs() {
+    var pl = PALETTES.Plasma;
+    c1.value = rgbToHex(pl[0]); c2.value = rgbToHex(pl[1]); c3.value = rgbToHex(pl[3]); cbg.value = "#03040a";
+  }
+  seedColorInputs();
+  function applyCustom() {
+    PALETTES.Custom = [hexToRgb(c1.value), hexToRgb(c2.value), hexToRgb(c3.value)];
+    cfg.paletteName = "Custom";
+    cfg.bg = hexToRgb(cbg.value).join(",");
+    paletteBtn.textContent = "Palette: Custom";
+  }
+  [c1, c2, c3, cbg].forEach(function (el) { el.addEventListener("input", applyCustom); });
+  colorsBtn.addEventListener("click", function () { colorPop.hidden = !colorPop.hidden; soundPop.hidden = true; });
+  document.getElementById("cpReset").addEventListener("click", function () {
+    seedColorInputs(); cfg.bg = "3,4,10"; cfg.paletteName = "Plasma"; paletteBtn.textContent = "Palette: Plasma";
+  });
+
+  /* sound popover */
+  var soundPop = document.getElementById("soundPop"), soundBtn = document.getElementById("soundBtn");
+  var soundStatus = document.getElementById("soundStatus"), micBtn = document.getElementById("micBtn");
+  var fileBtn = document.getElementById("fileBtn"), audioFile = document.getElementById("audioFile");
+  function setSoundStatus(txt, on) { soundStatus.textContent = txt; soundStatus.classList.toggle("on", !!on); }
+  function setSoundActive(kind) {
+    micBtn.classList.toggle("active", kind === "mic");
+    fileBtn.classList.toggle("active", kind === "file");
+    soundBtn.classList.toggle("active", kind != null);
+  }
+  soundBtn.addEventListener("click", function () { soundPop.hidden = !soundPop.hidden; colorPop.hidden = true; });
+  micBtn.addEventListener("click", startMic);
+  fileBtn.addEventListener("click", function () { audioFile.click(); });
+  audioFile.addEventListener("change", function () { if (audioFile.files && audioFile.files[0]) startFile(audioFile.files[0]); });
+  document.getElementById("soundStop").addEventListener("click", stopAudio);
+  bindSlider("react", "reactV", function (val) { audio.reactivity = val / 100; });
+
+  function syncControls() {
+    document.getElementById("density").value = cfg.density; document.getElementById("densityV").textContent = cfg.density;
+    document.getElementById("speed").value = cfg.speed; document.getElementById("speedV").textContent = cfg.speed;
+    document.getElementById("trails").value = cfg.persistence; document.getElementById("trailsV").textContent = cfg.persistence;
+    paletteBtn.textContent = "Palette: " + cfg.paletteName;
+    mirrorV.textContent = cfg.mirror <= 1 ? "Off" : "x" + cfg.mirror;
+    mirrorEl.querySelectorAll("button").forEach(function (e) { e.classList.toggle("active", Number(e.dataset.k) === cfg.mirror); });
+    document.querySelectorAll(".mode").forEach(function (e) { e.classList.toggle("active", e.dataset.id === cfg.mode); });
+    renderPlay(); renderCursorBtn();
+  }
+
+  document.getElementById("random").addEventListener("click", function () {
+    cfg.mode = MODES[Math.floor(Math.random() * MODES.length)].id;
+    cfg.paletteName = PALETTE_CYCLE[Math.floor(Math.random() * PALETTE_CYCLE.length)];
+    cfg.density = Math.round(rand(35, 90)); cfg.speed = Math.round(rand(30, 78));
+    cfg.persistence = Math.round(rand(55, 92)); cfg.running = true;
+    if (RECT_MODES[cfg.mode]) cfg.mirror = [1, 1, 2, 4, 6][Math.floor(Math.random() * 5)]; else cfg.mirror = 1;
+    respawn(); syncControls();
+  });
+  document.getElementById("reset").addEventListener("click", function () {
+    cfg.mode = DEFAULTS.mode; cfg.density = DEFAULTS.density; cfg.speed = DEFAULTS.speed;
+    cfg.persistence = DEFAULTS.persistence; cfg.paletteName = DEFAULTS.paletteName;
+    cfg.mouseMode = DEFAULTS.mouseMode; cfg.mirror = DEFAULTS.mirror; cfg.bg = DEFAULTS.bg; cfg.running = true;
+    respawn(); syncControls();
+  });
+  function savePng() {
+    var a = document.createElement("a"); a.download = "flux.png"; a.href = canvas.toDataURL("image/png"); a.click();
+  }
+  document.getElementById("save").addEventListener("click", savePng);
+  document.getElementById("hide").addEventListener("click", function () { document.body.classList.add("panel-hidden"); });
+  document.getElementById("reopen").addEventListener("click", function () { document.body.classList.remove("panel-hidden"); });
+
+  /* keyboard */
+  window.addEventListener("keydown", function (e) {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    var k = (e.key || "").toLowerCase();
+    if (k === " " || e.code === "Space") { e.preventDefault(); cfg.running = !cfg.running; renderPlay(); }
+    else if (k === "r") document.getElementById("random").click();
+    else if (k === "p") document.body.classList.toggle("panel-hidden");
+    else if (k === "s") savePng();
+    else if (k === "m") cursorBtn.click();
+    else if (k === "c") colorsBtn.click();
+  });
+
+  /* pointer + click burst */
+  function onMove(e) {
+    var cx = (e.touches ? e.touches[0].clientX : e.clientX);
+    var cy = (e.touches ? e.touches[0].clientY : e.clientY);
+    pointer.x = cx; pointer.y = cy; pointer.active = true;
+    cursorEl.style.transform = "translate(" + cx + "px," + cy + "px)";
+  }
+  function burst(bx, by, strength) {
+    var R = 320, S = strength || 13;
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i], dx = p.x - bx, dy = p.y - by, d = Math.hypot(dx, dy) + 0.001;
+      if (d < R) { var f = (1 - d / R) * S; p.vx += (dx / d) * f; p.vy += (dy / d) * f; }
+    }
+  }
+  canvas.addEventListener("mousedown", function (e) { burst(e.clientX, e.clientY); });
+  canvas.addEventListener("touchstart", function (e) { onMove(e); if (e.touches[0]) burst(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("touchmove", onMove, { passive: true });
+  window.addEventListener("mouseleave", function () { pointer.active = false; });
+  window.addEventListener("touchend", function () { pointer.active = false; });
+  window.addEventListener("resize", fit);
+
+  fit();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
